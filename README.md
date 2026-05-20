@@ -39,7 +39,10 @@ Native macOS notch-adjacent teleprompter for presentations and recordings.
 - Adjustable speed, font size, overlay width, and overlay height.
 - Optional countdown before scrolling starts.
 - Import/export plain text scripts.
-- Privacy mode (`NSWindow.SharingType`, best-effort/app-dependent).
+- Privacy mode (`NSWindow.SharingType` + `.transient` + window-level hardening).
+  Best-effort/app-dependent — **see [`docs/screen-share-test-matrix.md`](docs/screen-share-test-matrix.md)
+  for the honest list of where it works and where macOS 15+ ScreenCaptureKit
+  defeats it.**
 
 ## Requirements
 

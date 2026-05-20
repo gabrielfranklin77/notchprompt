@@ -1,4 +1,16 @@
-# Notchprompt
+# Notchprompt Pro (Fork)
+
+> **This is a fork** of [saif0200/notchprompt](https://github.com/saif0200/notchprompt) by Saif (MIT licensed) — all credit for the original goes to upstream.
+>
+> **What's different in this fork:**
+> - Hardened screen-share invisibility (extra `NSPanel` config + documented test matrix)
+> - Customizable global hotkeys ([sindresorhus/KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts))
+> - Multi-script library (save / load / switch between scripts)
+> - Themes (dark / light / high-contrast / reading-line)
+> - Pause-on-punctuation
+> - **Auto-sync speech follow** (the killer feature — on-device `SFSpeechRecognizer`, teleprompter scrolls as you speak, current word highlighted)
+>
+> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `1.2.0-pro`.
 
 <p align="center">
   <img src="assets/banner.png" alt="Notchprompt Banner" width="100%">
@@ -38,7 +50,8 @@ Native macOS notch-adjacent teleprompter for presentations and recordings.
 ## Install (Recommended)
 
 1. Open GitHub Releases:
-   `https://github.com/saif0200/notchprompt/releases`
+   `https://github.com/gabrielfranklin77/notchprompt/releases` (this fork)
+   or `https://github.com/saif0200/notchprompt/releases` (upstream)
 2. Download the latest `.dmg` release asset.
 3. Open the DMG and drag `notchprompt.app` to `Applications`.
 4. Launch `notchprompt.app`.
@@ -79,7 +92,7 @@ If it is still blocked:
 ## Build From Source
 
 ```bash
-git clone https://github.com/saif0200/notchprompt.git
+git clone https://github.com/gabrielfranklin77/notchprompt.git
 cd notchprompt
 open notchprompt.xcodeproj
 ```

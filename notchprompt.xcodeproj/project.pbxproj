@@ -271,8 +271,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = notch.notchprompt;
+				MARKETING_VERSION = 1.2.0-pro;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gabrielfranklin.notchpromptpro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -303,8 +303,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.3;
-				PRODUCT_BUNDLE_IDENTIFIER = notch.notchprompt;
+				MARKETING_VERSION = 1.2.0-pro;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gabrielfranklin.notchpromptpro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

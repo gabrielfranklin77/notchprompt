@@ -3,14 +3,21 @@
 > **This is a fork** of [saif0200/notchprompt](https://github.com/saif0200/notchprompt) by Saif (MIT licensed) — all credit for the original goes to upstream.
 >
 > **What's different in this fork:**
-> - Hardened screen-share invisibility (extra `NSPanel` config + documented test matrix)
-> - Customizable global hotkeys ([sindresorhus/KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts))
-> - Multi-script library (save / load / switch between scripts)
-> - Themes (dark / light / high-contrast / reading-line)
-> - Pause-on-punctuation
-> - **Auto-sync speech follow** (the killer feature — on-device `SFSpeechRecognizer`, teleprompter scrolls as you speak, current word highlighted)
 >
-> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `1.2.0-pro`.
+> Shipped in `v1.2.0-pro`:
+> - Hardened screen-share invisibility (extra `NSPanel` config + documented test matrix)
+>
+> Shipped in `v1.3.0-pro`:
+> - Multi-script library (save / load / switch between scripts, ⌥⌘L)
+> - Themes (Dark / Light / High Contrast / Reading Line)
+> - Pause-on-punctuation (natural pacing at `.!?,;:—` and paragraph breaks)
+>
+> Coming next:
+> - Customizable global hotkeys (currently hardcoded — recorder UI is a future patch)
+> - **Auto-sync speech follow** (the killer feature — on-device `SFSpeechRecognizer`,
+>   teleprompter scrolls as you speak, current word highlighted)
+>
+> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `1.3.0-pro`.
 
 <p align="center">
   <img src="assets/banner.png" alt="Notchprompt Banner" width="100%">
@@ -91,6 +98,7 @@ If it is still blocked:
 | `⌥⌘H` | Toggle Privacy Mode |
 | `⌥⌘=` | Increase speed |
 | `⌥⌘-` | Decrease speed |
+| `⌥⌘L` | Open Script Library |
 
 ## Build From Source
 

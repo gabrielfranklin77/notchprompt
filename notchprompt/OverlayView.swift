@@ -116,47 +116,56 @@ struct OverlayView: View {
 
             // The scroller is hard-clipped (so text truly "cuts off") and we add
             // subtle blur bands at the top/bottom to soften the exit.
-            ScrollingTextView(
-                text: model.script,
-                fontSize: CGFloat(model.fontSize),
-                speedPointsPerSecond: model.speedPointsPerSecond,
-                isRunning: model.isRunning,
-                hasStartedSession: model.hasStartedSession,
-                resetToken: model.resetToken,
-                jumpBackToken: model.jumpBackToken,
-                jumpBackDistancePoints: model.jumpBackDistancePoints,
-                manualScrollToken: model.manualScrollToken,
-                manualScrollDeltaPoints: model.manualScrollDeltaPoints,
-                fadeFraction: CGFloat(model.edgeFadeFraction),
-                backgroundOpacity: model.backgroundOpacity,
-                isHovering: false,
-                scrollMode: model.scrollMode,
-                savedScrollPhaseForResume: model.savedScrollPhaseForResume,
-                onSaveScrollPhaseForResume: { phase in
-                    model.saveScrollPhaseForResume(phase)
-                },
-                onReachedEnd: {
-                    if model.isRunning {
-                        model.markReachedEndInStopMode()
+            Group {
+                if model.isEditingScript {
+                    InlineScriptEditor(text: $model.script, fontSize: CGFloat(model.fontSize)) {
+                        model.isEditingScript = false
                     }
-                },
-                theme: model.theme,
-                pauseOnPunctuation: model.pauseOnPunctuation,
-                punctuationStops: model.punctuationStops,
-                totalCharCount: model.totalCharCount,
-                autoSyncEnabled: model.autoSyncEnabled,
-                currentSpeechWordIndex: model.currentSpeechWordIndex,
-                totalScriptTokens: model.scriptTokensForSpeech.count
-            )
+                } else {
+                    ScrollingTextView(
+                        text: model.script,
+                        fontSize: CGFloat(model.fontSize),
+                        speedPointsPerSecond: model.speedPointsPerSecond,
+                        isRunning: model.isRunning,
+                        hasStartedSession: model.hasStartedSession,
+                        resetToken: model.resetToken,
+                        jumpBackToken: model.jumpBackToken,
+                        jumpBackDistancePoints: model.jumpBackDistancePoints,
+                        manualScrollToken: model.manualScrollToken,
+                        manualScrollDeltaPoints: model.manualScrollDeltaPoints,
+                        fadeFraction: CGFloat(model.edgeFadeFraction),
+                        backgroundOpacity: model.backgroundOpacity,
+                        isHovering: false,
+                        scrollMode: model.scrollMode,
+                        savedScrollPhaseForResume: model.savedScrollPhaseForResume,
+                        onSaveScrollPhaseForResume: { phase in
+                            model.saveScrollPhaseForResume(phase)
+                        },
+                        onReachedEnd: {
+                            if model.isRunning {
+                                model.markReachedEndInStopMode()
+                            }
+                        },
+                        theme: model.theme,
+                        pauseOnPunctuation: model.pauseOnPunctuation,
+                        punctuationStops: model.punctuationStops,
+                        totalCharCount: model.totalCharCount,
+                        autoSyncEnabled: model.autoSyncEnabled,
+                        currentSpeechWordIndex: model.currentSpeechWordIndex,
+                        totalScriptTokens: model.scriptTokensForSpeech.count,
+                        isSpeechSpeaking: model.isSpeechSpeaking
+                    )
+                    .overlay {
+                        TrackpadScrollCaptureView { delta in
+                            model.handleManualScroll(deltaPoints: delta)
+                        }
+                    }
+                }
+            }
             .padding(.horizontal, 18)
             .padding(.top, 58)
             .padding(.bottom, 16)
             .clipShape(Rectangle())
-            .overlay {
-                TrackpadScrollCaptureView { delta in
-                    model.handleManualScroll(deltaPoints: delta)
-                }
-            }
 
             if model.theme.showsReadingLine {
                 readingLineOverlay
@@ -212,10 +221,24 @@ struct OverlayView: View {
                         }
                         .help("Clear script")
 
+                        OverlayControlButton(
+                            symbol: model.isEditingScript ? "checkmark" : "pencil",
+                            isActive: model.isEditingScript
+                        ) {
+                            model.isEditingScript.toggle()
+                        }
+                        .help(model.isEditingScript ? "Done editing" : "Edit script inline")
+
                         OverlayControlButton(symbol: "minus", repeatWhilePressed: true) {
                             model.adjustSpeed(delta: -PrompterModel.speedStep)
                         }
                         .help("Decrease speed")
+
+                        Text(speedBadgeText)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .frame(width: 28, alignment: .center)
+                            .help("Current speed (points/sec). Shows AUTO when speech sync is on.")
 
                         OverlayControlButton(symbol: "plus", repeatWhilePressed: true) {
                             model.adjustSpeed(delta: PrompterModel.speedStep)
@@ -263,6 +286,13 @@ struct OverlayView: View {
         return Color(.sRGB, red: 0, green: 0, blue: 0, opacity: model.backgroundOpacity)
     }
 
+    /// Compact label shown between the −/+ buttons in the right control capsule.
+    /// When auto-sync is on the slider value is irrelevant (speech drives scroll),
+    /// so we surface "AUTO" instead of a stale number.
+    private var speedBadgeText: String {
+        model.autoSyncEnabled ? "AUTO" : "\(Int(model.speedPointsPerSecond))"
+    }
+
     /// Tints the left control capsule's stroke based on speech auto-sync state.
     /// - Subtle white when idle (default look)
     /// - Soft green when active and matching confidently
@@ -286,6 +316,32 @@ struct OverlayView: View {
             }
             .stroke(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
         }
+    }
+}
+
+/// Inline editor that swaps in for `ScrollingTextView` when the user clicks the
+/// pencil button. Bound directly to `PrompterModel.script` so edits autosave
+/// through the existing UserDefaults debouncer. Escape commits and exits.
+private struct InlineScriptEditor: View {
+    @Binding var text: String
+    let fontSize: CGFloat
+    let onCommit: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.system(size: fontSize, weight: .regular, design: .monospaced))
+            .foregroundStyle(.white)
+            .scrollContentBackground(.hidden)
+            .background(Color.black.opacity(0.35))
+            .cornerRadius(8)
+            .focused($isFocused)
+            .onAppear { isFocused = true }
+            .onKeyPress(.escape) {
+                onCommit()
+                return .handled
+            }
     }
 }
 

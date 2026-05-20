@@ -103,9 +103,25 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     @Published var currentSpeechConfidence: Double = 0
     /// True when SpeechSyncManager has flagged a sustained low-confidence period.
     @Published var isSpeechLostPlace: Bool = false
+    /// True when fresh transcript words are being matched (within ~700ms).
+    /// Drives the freeze-on-silence behavior in ScrollingTextView.
+    @Published var isSpeechSpeaking: Bool = false
     /// Normalized tokenization of the current script — shared with the matcher
     /// so we only tokenize once per script change.
     @Published private(set) var scriptTokensForSpeech: [SpeechSyncMatcher.ScriptToken] = []
+
+    // MARK: - Inline editing (Phase 3.1)
+    /// When true, the overlay swaps the scroller for a TextEditor bound to `script`.
+    /// Toggling this on auto-pauses running scroll and auto-sync so editing is conflict-free.
+    @Published var isEditingScript: Bool = false {
+        didSet {
+            guard isEditingScript, isEditingScript != oldValue else { return }
+            // Entering edit mode: pause everything that could fight the user's keystrokes.
+            if isRunning || isCountingDown { stop() }
+            autoSyncEnabled = false
+            manualScrollEnabled = false
+        }
+    }
 
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()

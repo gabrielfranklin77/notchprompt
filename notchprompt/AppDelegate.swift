@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var overlayController: OverlayWindowController?
     private var settingsWindowController: SettingsWindowController?
     private var scriptEditorWindowController: ScriptEditorWindowController?
+    private var scriptLibraryWindowController: ScriptLibraryWindowController?
     private var cancellables: Set<AnyCancellable> = []
 
     private var startPauseItem: NSMenuItem?
@@ -225,6 +226,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         openScriptEditor.target = self
         menu.addItem(openScriptEditor)
 
+        let openScriptLibrary = NSMenuItem(title: "Script Library…", action: #selector(openScriptLibraryWindow), keyEquivalent: "l")
+        openScriptLibrary.target = self
+        openScriptLibrary.keyEquivalentModifierMask = shortcutModifiers
+        menu.addItem(openScriptLibrary)
+
         menu.addItem(.separator())
 
         let open = NSMenuItem(title: "Settings…", action: #selector(openMainWindow), keyEquivalent: "")
@@ -312,6 +318,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 scriptEditorWindowController = ScriptEditorWindowController()
             }
             scriptEditorWindowController?.show()
+        }
+    }
+
+    @objc private func openScriptLibraryWindow() {
+        Task { @MainActor in
+            if scriptLibraryWindowController == nil {
+                scriptLibraryWindowController = ScriptLibraryWindowController()
+            }
+            scriptLibraryWindowController?.show()
         }
     }
 

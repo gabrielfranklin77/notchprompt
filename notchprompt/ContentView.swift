@@ -21,6 +21,7 @@ struct ContentView: View {
                 headerSection
                 playbackSection
                 appearanceSection
+                readingSection
                 displaySection
                 privacySection
                 shortcutsSection
@@ -119,6 +120,30 @@ struct ContentView: View {
                     valueText: "\(Int(model.overlayHeight))",
                     slider: Slider(value: $model.overlayHeight, in: 120...300, step: 2)
                 )
+            }
+        }
+    }
+
+    private var readingSection: some View {
+        SettingsSection(title: "Reading") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Theme")
+                        .frame(width: rowLabelWidth, alignment: .leading)
+                    Picker("", selection: $model.theme) {
+                        ForEach(PrompterModel.Theme.allCases, id: \.self) { t in
+                            Text(t.label).tag(t)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    Spacer(minLength: 0)
+                }
+
+                Toggle("Pause briefly at punctuation", isOn: $model.pauseOnPunctuation)
+                Text("Adds natural pauses after `.`, `!`, `?`, `,`, `;`, `:`, `—`, and paragraph breaks. Off by default.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }

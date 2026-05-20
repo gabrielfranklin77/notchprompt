@@ -15,12 +15,12 @@ final class PrompterModel: ObservableObject {
         case infinite
         case stopAtEnd
     }
-    
+
     enum CountdownBehavior: String, CaseIterable {
         case always
         case freshStartOnly
         case never
-        
+
         var label: String {
             switch self {
             case .always:
@@ -31,6 +31,27 @@ final class PrompterModel: ObservableObject {
                 return "Never"
             }
         }
+    }
+
+    enum Theme: String, CaseIterable {
+        case dark
+        case light
+        case highContrast
+        case readingLine
+
+        var label: String {
+            switch self {
+            case .dark: return "Dark"
+            case .light: return "Light"
+            case .highContrast: return "High Contrast"
+            case .readingLine: return "Reading Line"
+            }
+        }
+    }
+
+    struct PunctuationStop: Equatable {
+        let charOffset: Int
+        let pauseMs: Int
     }
 
     static let shared = PrompterModel()
@@ -65,6 +86,12 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     // Fraction of the viewport height to fade at top and bottom.
     let edgeFadeFraction: Double = 0.20
 
+    // MARK: - Reading aids (Phase 2)
+    @Published var theme: Theme = .dark
+    @Published var pauseOnPunctuation: Bool = false
+    @Published private(set) var punctuationStops: [PunctuationStop] = []
+    @Published private(set) var totalCharCount: Int = 0
+
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()
     @Published private(set) var jumpBackToken: UUID = UUID()
@@ -96,9 +123,21 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         static let countdownBehavior = "countdownBehavior"
         static let scrollMode = "scrollMode"
         static let selectedScreenID = "selectedScreenID"
+        static let theme = "theme"
+        static let pauseOnPunctuation = "pauseOnPunctuation"
     }
 
-    private init() {}
+    private var scriptObserver: AnyCancellable?
+
+    private init() {
+        recomputePunctuationStops()
+        // Debounced recompute so typing/pasting large scripts doesn't tokenize on every keystroke.
+        scriptObserver = $script
+            .debounce(for: .milliseconds(120), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.recomputePunctuationStops()
+            }
+    }
 
     deinit {
         countdownTask?.cancel()
@@ -317,6 +356,12 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
             scrollMode = .infinite
         }
         selectedScreenID = CGDirectDisplayID(defaults.object(forKey: DefaultsKey.selectedScreenID) as? UInt32 ?? 0)
+        if let rawTheme = defaults.string(forKey: DefaultsKey.theme),
+           let savedTheme = Theme(rawValue: rawTheme) {
+            theme = savedTheme
+        }
+        pauseOnPunctuation = defaults.object(forKey: DefaultsKey.pauseOnPunctuation) as? Bool ?? false
+        recomputePunctuationStops()
     }
 
     func saveToDefaults() {
@@ -334,6 +379,8 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         defaults.set(countdownBehavior.rawValue, forKey: DefaultsKey.countdownBehavior)
         defaults.set(scrollMode.rawValue, forKey: DefaultsKey.scrollMode)
         defaults.set(selectedScreenID, forKey: DefaultsKey.selectedScreenID)
+        defaults.set(theme.rawValue, forKey: DefaultsKey.theme)
+        defaults.set(pauseOnPunctuation, forKey: DefaultsKey.pauseOnPunctuation)
     }
 
     private func beginCountdown(seconds: Int) {
@@ -378,5 +425,47 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
 
     private func clamp(_ value: Double, lower: Double, upper: Double) -> Double {
         min(max(value, lower), upper)
+    }
+
+    /// Scans the current script for sentence/clause boundaries that should
+    /// trigger a brief pause during auto-scroll. Called once on init and on
+    /// every debounced change to `script` via the Combine observer. The
+    /// `charOffset` is a Unicode-scalar index because the rendering text
+    /// uses a monospaced font and we map scroll phase → offset linearly.
+    private func recomputePunctuationStops() {
+        let scalars = Array(script.unicodeScalars)
+        var stops: [PunctuationStop] = []
+        stops.reserveCapacity(scalars.count / 8)
+
+        let period: Unicode.Scalar = "."
+        let exclamation: Unicode.Scalar = "!"
+        let question: Unicode.Scalar = "?"
+        let comma: Unicode.Scalar = ","
+        let semicolon: Unicode.Scalar = ";"
+        let colon: Unicode.Scalar = ":"
+        let newline: Unicode.Scalar = "\n"
+        let emDash = Unicode.Scalar(0x2014)! // —
+
+        for (idx, c) in scalars.enumerated() {
+            let pauseMs: Int
+            switch c {
+            case period, exclamation, question:
+                pauseMs = 400
+            case comma, semicolon, colon:
+                pauseMs = 150
+            case emDash:
+                pauseMs = 200
+            case newline:
+                pauseMs = (idx + 1 < scalars.count && scalars[idx + 1] == newline) ? 600 : 0
+            default:
+                pauseMs = 0
+            }
+            if pauseMs > 0 {
+                stops.append(.init(charOffset: idx, pauseMs: pauseMs))
+            }
+        }
+
+        punctuationStops = stops
+        totalCharCount = scalars.count
     }
 }

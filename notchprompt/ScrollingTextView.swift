@@ -7,6 +7,39 @@
 
 import SwiftUI
 
+extension PrompterModel.Theme {
+    /// Color of the script text rendered inside the scroller.
+    var textColor: Color {
+        switch self {
+        case .dark, .readingLine:
+            return .white
+        case .light:
+            return Color(red: 0.08, green: 0.08, blue: 0.10)
+        case .highContrast:
+            return Color(red: 1.0, green: 0.95, blue: 0.55)
+        }
+    }
+
+    /// Background fill behind the script. `nil` means "use the user's `backgroundOpacity` setting on black"
+    /// (preserves the legacy notch-blend look). Light theme is the only one that overrides to a near-white surface.
+    var backgroundFill: Color? {
+        switch self {
+        case .dark, .readingLine:
+            return nil
+        case .light:
+            return Color(red: 0.96, green: 0.96, blue: 0.97)
+        case .highContrast:
+            return .black
+        }
+    }
+
+    /// When true, the OverlayView draws a faint horizontal "reading line" at ~1/3 from the top
+    /// to help the eye anchor while the text scrolls upward.
+    var showsReadingLine: Bool {
+        self == .readingLine
+    }
+}
+
 struct ScrollingTextView: View {
     let text: String
     let fontSize: CGFloat
@@ -25,6 +58,10 @@ struct ScrollingTextView: View {
     let savedScrollPhaseForResume: CGFloat?
     let onSaveScrollPhaseForResume: ((CGFloat) -> Void)?
     let onReachedEnd: (() -> Void)?
+    let theme: PrompterModel.Theme
+    let pauseOnPunctuation: Bool
+    let punctuationStops: [PrompterModel.PunctuationStop]
+    let totalCharCount: Int
 
     private static let loopGap: CGFloat = 24
     private static let activeTickInterval: TimeInterval = 1.0 / 60.0
@@ -39,6 +76,8 @@ struct ScrollingTextView: View {
     @State private var hasReachedEndInStopMode: Bool = false
     @State private var hasMeasuredContentHeight: Bool = false
     @State private var deferredStopTargetPhase: CGFloat? = nil
+    @State private var lastConsumedPunctuationOffset: Int = -1
+    @State private var punctuationPauseUntil: Date? = nil
 
     // Smooth deceleration/acceleration rate (0-1, higher = faster)
     private let speedLerpFactor: Double = 8.0
@@ -220,7 +259,7 @@ struct ScrollingTextView: View {
     private var scrollingContent: some View {
         Text(text)
             .font(.system(size: fontSize, weight: .regular, design: .monospaced))
-            .foregroundStyle(.white)
+            .foregroundStyle(theme.textColor)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -274,6 +313,8 @@ struct ScrollingTextView: View {
         hasReachedEndInStopMode = false
         deferredStopTargetPhase = nil
         lastTickDate = nil
+        lastConsumedPunctuationOffset = -1
+        punctuationPauseUntil = nil
         let desired = desiredSpeedMultiplier()
         currentSpeedMultiplier = desired
         targetSpeedMultiplier = desired
@@ -319,6 +360,16 @@ struct ScrollingTextView: View {
         phase = max(phase, topOfScriptPhaseFloor)
     }
 
+    /// Linear estimate of which character offset is "at the reading line"
+    /// given the current scroll phase. Works well for the monospaced
+    /// font we render in. Returns 0 when content hasn't measured yet.
+    private func currentCharOffset(forPhase phase: CGFloat) -> Int {
+        guard contentHeight > 1, totalCharCount > 0 else { return 0 }
+        let clampedPhase = max(0, phase)
+        let ratio = min(1, clampedPhase / contentHeight)
+        return Int((ratio * CGFloat(totalCharCount)).rounded(.down))
+    }
+
     private func tick(at date: Date) {
         guard hasContent else {
             lastTickDate = date
@@ -327,7 +378,20 @@ struct ScrollingTextView: View {
 
         // Authoritative per-frame run state; don't rely on onChange timing.
         let shouldRun = (isRunning && !isHovering) && !(scrollMode == .stopAtEnd && hasReachedEndInStopMode)
-        targetSpeedMultiplier = shouldRun ? 1.0 : 0.0
+
+        // Pause-on-punctuation: while the punctuation pause window is active and we'd otherwise be running,
+        // hold the scroll. Once the window expires, resume naturally.
+        let inPunctuationPause: Bool
+        if pauseOnPunctuation, let pauseUntil = punctuationPauseUntil, date < pauseUntil, shouldRun {
+            inPunctuationPause = true
+        } else {
+            inPunctuationPause = false
+            if punctuationPauseUntil != nil, let pauseUntil = punctuationPauseUntil, date >= pauseUntil {
+                punctuationPauseUntil = nil
+            }
+        }
+
+        targetSpeedMultiplier = (shouldRun && !inPunctuationPause) ? 1.0 : 0.0
 
         let totalDt: CGFloat
         if let lastTickDate {
@@ -352,7 +416,23 @@ struct ScrollingTextView: View {
                 currentSpeedMultiplier = targetSpeedMultiplier
             }
 
+            let previousPhase = phase
             phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
+
+            // Pause-on-punctuation: detect a stop boundary that the reading line just crossed.
+            // We only fire once per stop (tracked via lastConsumedPunctuationOffset) and only
+            // when actively scrolling forward.
+            if pauseOnPunctuation, shouldRun, !inPunctuationPause, phase > previousPhase,
+               punctuationPauseUntil == nil {
+                let nowOffset = currentCharOffset(forPhase: phase)
+                if let firedStop = punctuationStops.first(where: {
+                    $0.charOffset > lastConsumedPunctuationOffset && $0.charOffset <= nowOffset
+                }) {
+                    lastConsumedPunctuationOffset = firedStop.charOffset
+                    punctuationPauseUntil = date.addingTimeInterval(TimeInterval(firedStop.pauseMs) / 1000.0)
+                    targetSpeedMultiplier = 0
+                }
+            }
 
             // Lazily compute the stop target on the first tick after entering
             // stopAtEnd mode. This runs in the same code path that checks the

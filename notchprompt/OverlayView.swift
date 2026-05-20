@@ -102,7 +102,7 @@ struct OverlayView: View {
                 .opacity(0.0)
 
             shape
-                .fill(Color(.sRGB, red: 0, green: 0, blue: 0, opacity: model.backgroundOpacity))
+                .fill(themeBackgroundFill)
 
             shape
                 .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
@@ -139,7 +139,11 @@ struct OverlayView: View {
                     if model.isRunning {
                         model.markReachedEndInStopMode()
                     }
-                }
+                },
+                theme: model.theme,
+                pauseOnPunctuation: model.pauseOnPunctuation,
+                punctuationStops: model.punctuationStops,
+                totalCharCount: model.totalCharCount
             )
             .padding(.horizontal, 18)
             .padding(.top, 58)
@@ -149,6 +153,12 @@ struct OverlayView: View {
                 TrackpadScrollCaptureView { delta in
                     model.handleManualScroll(deltaPoints: delta)
                 }
+            }
+
+            if model.theme.showsReadingLine {
+                readingLineOverlay
+                    .clipShape(shape)
+                    .allowsHitTesting(false)
             }
             
             if !model.isCountingDown {
@@ -229,6 +239,28 @@ struct OverlayView: View {
             }
         }
         .frame(width: model.overlayWidth, height: model.overlayHeight)
+    }
+
+    /// Theme-aware background fill. When the theme's `backgroundFill` is nil,
+    /// fall back to the legacy notch-blend look (black at the user's selected opacity).
+    private var themeBackgroundFill: Color {
+        if let fill = model.theme.backgroundFill {
+            return fill
+        }
+        return Color(.sRGB, red: 0, green: 0, blue: 0, opacity: model.backgroundOpacity)
+    }
+
+    /// Faint horizontal guide rendered ~1/3 from the top of the overlay
+    /// for the "Reading Line" theme. Helps the eye anchor while text scrolls.
+    private var readingLineOverlay: some View {
+        GeometryReader { proxy in
+            let y = proxy.size.height * 0.36
+            Path { p in
+                p.move(to: CGPoint(x: 22, y: y))
+                p.addLine(to: CGPoint(x: proxy.size.width - 22, y: y))
+            }
+            .stroke(Color.white.opacity(0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        }
     }
 }
 

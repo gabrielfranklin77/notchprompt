@@ -12,12 +12,17 @@
 > - Themes (Dark / Light / High Contrast / Reading Line)
 > - Pause-on-punctuation (natural pacing at `.!?,;:—` and paragraph breaks)
 >
+> Shipped in `v2.0.0-pro` (beta):
+> - **Speech auto-sync** — toggle `waveform` in the overlay; teleprompter
+>   scrolls as you speak using on-device `SFSpeechRecognizer`. Supports
+>   pt-BR, en-US, en-GB, es-ES, fr-FR. Audio never leaves your Mac.
+> - Lost-place recovery (sustained low-confidence flips the indicator red)
+>
 > Coming next:
 > - Customizable global hotkeys (currently hardcoded — recorder UI is a future patch)
-> - **Auto-sync speech follow** (the killer feature — on-device `SFSpeechRecognizer`,
->   teleprompter scrolls as you speak, current word highlighted)
+> - Inline word highlighting in the overlay (currently only the scroll position follows speech)
 >
-> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `1.3.0-pro`.
+> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `2.0.0-pro`.
 
 <p align="center">
   <img src="assets/banner.png" alt="Notchprompt Banner" width="100%">

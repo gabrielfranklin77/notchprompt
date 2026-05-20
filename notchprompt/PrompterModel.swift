@@ -92,6 +92,21 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     @Published private(set) var punctuationStops: [PunctuationStop] = []
     @Published private(set) var totalCharCount: Int = 0
 
+    // MARK: - Speech auto-sync (Phase 3)
+    /// When true, scroll position is driven by speech recognition instead of a timer.
+    @Published var autoSyncEnabled: Bool = false
+    /// Locale used by the speech recognizer. Persisted to UserDefaults.
+    @Published var speechLocaleIdentifier: String = "pt-BR"
+    /// Latest matched script-token index, published by SpeechSyncManager.
+    @Published var currentSpeechWordIndex: Int = 0
+    /// Confidence of the most recent match (0.0 – 1.0). Drives the UI indicator.
+    @Published var currentSpeechConfidence: Double = 0
+    /// True when SpeechSyncManager has flagged a sustained low-confidence period.
+    @Published var isSpeechLostPlace: Bool = false
+    /// Normalized tokenization of the current script — shared with the matcher
+    /// so we only tokenize once per script change.
+    @Published private(set) var scriptTokensForSpeech: [SpeechSyncMatcher.ScriptToken] = []
+
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()
     @Published private(set) var jumpBackToken: UUID = UUID()
@@ -125,6 +140,7 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         static let selectedScreenID = "selectedScreenID"
         static let theme = "theme"
         static let pauseOnPunctuation = "pauseOnPunctuation"
+        static let speechLocaleIdentifier = "speechLocaleIdentifier"
     }
 
     private var scriptObserver: AnyCancellable?
@@ -361,6 +377,9 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
             theme = savedTheme
         }
         pauseOnPunctuation = defaults.object(forKey: DefaultsKey.pauseOnPunctuation) as? Bool ?? false
+        if let savedLocale = defaults.string(forKey: DefaultsKey.speechLocaleIdentifier) {
+            speechLocaleIdentifier = savedLocale
+        }
         recomputePunctuationStops()
     }
 
@@ -381,6 +400,7 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         defaults.set(selectedScreenID, forKey: DefaultsKey.selectedScreenID)
         defaults.set(theme.rawValue, forKey: DefaultsKey.theme)
         defaults.set(pauseOnPunctuation, forKey: DefaultsKey.pauseOnPunctuation)
+        defaults.set(speechLocaleIdentifier, forKey: DefaultsKey.speechLocaleIdentifier)
     }
 
     private func beginCountdown(seconds: Int) {
@@ -467,5 +487,10 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
 
         punctuationStops = stops
         totalCharCount = scalars.count
+
+        // Recompute the speech-sync token list whenever the script changes so the
+        // SpeechSyncManager always sees the freshest tokenization without us
+        // having to wire a second debounce path.
+        scriptTokensForSpeech = SpeechSyncMatcher.tokenizeScript(script)
     }
 }

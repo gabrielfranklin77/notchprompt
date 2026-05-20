@@ -143,7 +143,10 @@ struct OverlayView: View {
                 theme: model.theme,
                 pauseOnPunctuation: model.pauseOnPunctuation,
                 punctuationStops: model.punctuationStops,
-                totalCharCount: model.totalCharCount
+                totalCharCount: model.totalCharCount,
+                autoSyncEnabled: model.autoSyncEnabled,
+                currentSpeechWordIndex: model.currentSpeechWordIndex,
+                totalScriptTokens: model.scriptTokensForSpeech.count
             )
             .padding(.horizontal, 18)
             .padding(.top, 58)
@@ -170,18 +173,28 @@ struct OverlayView: View {
                             model.switchPlaybackModeFromOverlayControl()
                         }
                         .help((model.isRunning || model.isCountingDown) ? "Pause and switch to manual trackpad scroll" : "Start auto scroll")
-                        
+
                         OverlayControlButton(symbol: "gobackward.5") {
                             model.jumpBack(seconds: 5)
                         }
                         .help("Jump back 5 seconds")
+
+                        OverlayControlButton(
+                            symbol: model.autoSyncEnabled ? "waveform.circle.fill" : "waveform",
+                            isActive: model.autoSyncEnabled
+                        ) {
+                            model.autoSyncEnabled.toggle()
+                        }
+                        .help(model.autoSyncEnabled
+                              ? "Stop speech auto-sync"
+                              : "Start speech auto-sync (scrolls as you talk)")
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(Color.black.opacity(0.7), in: Capsule())
                     .overlay(
                         Capsule()
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            .stroke(speechIndicatorStrokeColor, lineWidth: 1)
                     )
                     
                     Spacer(minLength: 8)
@@ -248,6 +261,18 @@ struct OverlayView: View {
             return fill
         }
         return Color(.sRGB, red: 0, green: 0, blue: 0, opacity: model.backgroundOpacity)
+    }
+
+    /// Tints the left control capsule's stroke based on speech auto-sync state.
+    /// - Subtle white when idle (default look)
+    /// - Soft green when active and matching confidently
+    /// - Soft red when "lost place" (sustained low confidence)
+    private var speechIndicatorStrokeColor: Color {
+        guard model.autoSyncEnabled else { return Color.white.opacity(0.12) }
+        if model.isSpeechLostPlace { return Color.red.opacity(0.65) }
+        let conf = max(0, min(1, model.currentSpeechConfidence))
+        let alpha = 0.18 + 0.55 * conf
+        return Color.green.opacity(alpha)
     }
 
     /// Faint horizontal guide rendered ~1/3 from the top of the overlay

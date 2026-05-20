@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let shortcutModifiers: NSEvent.ModifierFlags = [.command, .option]
 
     private let model = PrompterModel.shared
+    private let speechManager = SpeechSyncManager()
 
     private var statusItem: NSStatusItem?
     private var overlayController: OverlayWindowController?
@@ -54,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationWillTerminate(_ notification: Notification) {
         model.saveToDefaults()
         hotkeyManager.unregisterAll()
+        speechManager.stop()
         cancellables.removeAll()
     }
 
@@ -112,13 +114,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             model.$countdownSeconds.map { _ in () }.eraseToAnyPublisher(),
             model.$countdownBehavior.map { _ in () }.eraseToAnyPublisher(),
             model.$scrollMode.map { _ in () }.eraseToAnyPublisher(),
-            model.$selectedScreenID.map { _ in () }.eraseToAnyPublisher()
+            model.$selectedScreenID.map { _ in () }.eraseToAnyPublisher(),
+            model.$theme.map { _ in () }.eraseToAnyPublisher(),
+            model.$pauseOnPunctuation.map { _ in () }.eraseToAnyPublisher(),
+            model.$speechLocaleIdentifier.map { _ in () }.eraseToAnyPublisher()
         )
         .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
         .sink { [weak self] in
             self?.model.saveToDefaults()
         }
         .store(in: &cancellables)
+
+        wireSpeechSync()
+    }
+
+    /// Connects PrompterModel <-> SpeechSyncManager so toggling auto-sync
+    /// starts/stops the recognizer and matched word indices flow back into
+    /// the model for ScrollingTextView to consume.
+    private func wireSpeechSync() {
+        // Mirror matcher output into the model.
+        speechManager.$currentWordIndex
+            .receive(on: RunLoop.main)
+            .sink { [weak self] index in self?.model.currentSpeechWordIndex = index }
+            .store(in: &cancellables)
+
+        speechManager.$matchConfidence
+            .receive(on: RunLoop.main)
+            .sink { [weak self] conf in self?.model.currentSpeechConfidence = conf }
+            .store(in: &cancellables)
+
+        speechManager.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                self?.model.isSpeechLostPlace = (state == .lostPlace)
+            }
+            .store(in: &cancellables)
+
+        // React to toggles and locale changes.
+        model.$autoSyncEnabled
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    Task { @MainActor in
+                        await self.speechManager.start(
+                            scriptTokens: self.model.scriptTokensForSpeech
+                        )
+                    }
+                } else {
+                    self.speechManager.stop()
+                }
+            }
+            .store(in: &cancellables)
+
+        model.$speechLocaleIdentifier
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] identifier in
+                self?.speechManager.locale = Locale(identifier: identifier)
+            }
+            .store(in: &cancellables)
+
+        // Reload tokens when the script changes mid-session.
+        model.$scriptTokensForSpeech
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] tokens in
+                guard let self, self.model.autoSyncEnabled else { return }
+                Task { @MainActor in
+                    self.speechManager.stop()
+                    await self.speechManager.start(scriptTokens: tokens)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     private func setupEditMenu() {

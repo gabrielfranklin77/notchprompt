@@ -65,6 +65,9 @@ struct ScrollingTextView: View {
     let autoSyncEnabled: Bool
     let currentSpeechWordIndex: Int
     let totalScriptTokens: Int
+    /// When false in auto-sync mode, freezes `phase` in place — eliminates the
+    /// 1s "ghost roll" the user reported when pausing mid-sentence.
+    let isSpeechSpeaking: Bool
 
     private static let loopGap: CGFloat = 24
     private static let activeTickInterval: TimeInterval = 1.0 / 60.0
@@ -422,15 +425,24 @@ struct ScrollingTextView: View {
             let previousPhase = phase
             if autoSyncEnabled, totalScriptTokens > 0, hasMeasuredContentHeight {
                 // Speech-driven mode: phase tracks word index instead of being
-                // integrated from speedPointsPerSecond. Smoothly interpolate
-                // toward the target so it never jumps abruptly.
-                let ratio = CGFloat(currentSpeechWordIndex) / CGFloat(max(totalScriptTokens - 1, 1))
-                // Anchor the matched word ~30% from the top of the viewport so
-                // the reader sees a couple words of upcoming context.
-                let readingAnchor = viewportHeight * 0.30
-                let target = max(topOfScriptPhaseFloor, (ratio * contentHeight) - readingAnchor)
-                let easing = min(1.0, 4.5 * step)
-                phase += (target - phase) * CGFloat(easing)
+                // integrated from speedPointsPerSecond.
+                //
+                // Freeze-on-silence: when the matcher hasn't seen a fresh word in
+                // ~700ms (`isSpeechSpeaking == false`), hold phase in place so the
+                // text doesn't keep gliding under residual easing — the v2.0
+                // behavior that felt like a 1s ghost roll.
+                if isSpeechSpeaking {
+                    let ratio = CGFloat(currentSpeechWordIndex) / CGFloat(max(totalScriptTokens - 1, 1))
+                    // Anchor the matched word ~30% from the top of the viewport so
+                    // the reader sees a couple words of upcoming context.
+                    let readingAnchor = viewportHeight * 0.30
+                    let target = max(topOfScriptPhaseFloor, (ratio * contentHeight) - readingAnchor)
+                    // Faster easing (9.0/step → ~300ms to settle) so the scroll
+                    // feels like it's tracking the speaker rather than catching up.
+                    let easing = min(1.0, 9.0 * step)
+                    phase += (target - phase) * CGFloat(easing)
+                }
+                // else: silence → phase stays put.
             } else {
                 phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
             }

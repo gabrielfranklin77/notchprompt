@@ -18,11 +18,17 @@
 >   pt-BR, en-US, en-GB, es-ES, fr-FR. Audio never leaves your Mac.
 > - Lost-place recovery (sustained low-confidence flips the indicator red)
 >
+> Shipped in `v2.1.0-pro` (test-feedback patch):
+> - Inline script editing in the overlay (pencil button → checkmark)
+> - Speed indicator badge between `−` / `+` (shows `AUTO` when speech sync is on)
+> - Speech sync now freezes scroll when you stop speaking (~700ms threshold,
+>   easing accelerated to ~300ms when speaking) — fixes the "ghost roll" bug
+>
 > Coming next:
 > - Customizable global hotkeys (currently hardcoded — recorder UI is a future patch)
 > - Inline word highlighting in the overlay (currently only the scroll position follows speech)
 >
-> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `2.0.0-pro`.
+> Bundle id: `com.gabrielfranklin.notchpromptpro`. Marketing version: `2.1.0-pro`.
 
 <p align="center">
   <img src="assets/banner.png" alt="Notchprompt Banner" width="100%">

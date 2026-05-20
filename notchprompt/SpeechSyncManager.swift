@@ -32,6 +32,10 @@ final class SpeechSyncManager: ObservableObject {
     @Published private(set) var currentWordIndex: Int = 0
     @Published private(set) var matchConfidence: Double = 0
     @Published private(set) var isAvailable: Bool = false
+    /// True while fresh transcript words are coming in (within ~`silenceThreshold`).
+    /// Drives the freeze-on-silence behavior in ScrollingTextView so the overlay
+    /// stops moving the moment the speaker pauses.
+    @Published private(set) var isSpeaking: Bool = false
 
     /// Locale used by SFSpeechRecognizer. Defaults to the user's preferred app
     /// language with pt-BR / en-US fallback.
@@ -52,10 +56,15 @@ final class SpeechSyncManager: ObservableObject {
 
     private var scriptTokens: [SpeechSyncMatcher.ScriptToken] = []
     private var lastConfidentMatchAt: Date = .distantPast
+    private var lastTranscriptAdvanceAt: Date = .distantPast
 
     private static let sessionRefreshInterval: TimeInterval = 50  // SFSpeech hard cap is 60s
     private static let lostPlaceThreshold: TimeInterval = 3       // seconds of low-confidence before warning
     private static let confidenceFloor: Double = 0.55
+    /// How long the matcher can go without advancing the cursor before we
+    /// consider the speaker silent. 700ms is the sweet spot — long enough to
+    /// ignore between-word pauses, short enough to feel responsive.
+    private static let silenceThreshold: TimeInterval = 0.7
 
     init(locale: Locale = Locale(identifier: "pt-BR")) {
         self.locale = locale
@@ -163,6 +172,7 @@ final class SpeechSyncManager: ObservableObject {
 
         state = .idle
         matchConfidence = 0
+        isSpeaking = false
     }
 
     private func restart() async {
@@ -236,16 +246,29 @@ final class SpeechSyncManager: ObservableObject {
 
     private func scheduleLostPlaceCheck() {
         lostPlaceTimer?.invalidate()
-        lostPlaceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        // Runs at 4 Hz — frequent enough that the freeze-on-silence flip lands
+        // well under the user-perceived 1s threshold.
+        lostPlaceTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.state == .active || self.state == .lostPlace else { return }
-                let elapsed = Date().timeIntervalSince(self.lastConfidentMatchAt)
-                if elapsed > Self.lostPlaceThreshold {
-                    if self.state != .lostPlace {
-                        self.state = .lostPlace
-                    }
+                guard let self, self.state == .active || self.state == .lostPlace else {
+                    self?.isSpeaking = false
+                    return
+                }
+                let now = Date()
+
+                // 1. Long pause → "lost place" warning state for the UI.
+                let elapsedConfident = now.timeIntervalSince(self.lastConfidentMatchAt)
+                if elapsedConfident > Self.lostPlaceThreshold {
+                    if self.state != .lostPlace { self.state = .lostPlace }
                 } else if self.state == .lostPlace {
                     self.state = .active
+                }
+
+                // 2. Short pause → freeze the scroll so it doesn't ghost-glide forward.
+                let elapsedAdvance = now.timeIntervalSince(self.lastTranscriptAdvanceAt)
+                let nowSpeaking = elapsedAdvance < Self.silenceThreshold
+                if nowSpeaking != self.isSpeaking {
+                    self.isSpeaking = nowSpeaking
                 }
             }
         }
@@ -271,12 +294,19 @@ final class SpeechSyncManager: ObservableObject {
         // Below it, hold the current position and let lostPlaceTimer flip state.
         if match.confidence >= Self.confidenceFloor && match.scriptTokenIndex > currentWordIndex {
             currentWordIndex = match.scriptTokenIndex
-            lastConfidentMatchAt = Date()
+            let now = Date()
+            lastConfidentMatchAt = now
+            // Forward progress = the speaker is actively reading. This resets the
+            // silence clock so ScrollingTextView keeps moving.
+            lastTranscriptAdvanceAt = now
+            if !isSpeaking { isSpeaking = true }
             if state == .lostPlace {
                 state = .active
             }
         } else if match.confidence >= Self.confidenceFloor {
             // Confident but didn't advance — still resets the lost-place clock.
+            // Intentionally do NOT touch lastTranscriptAdvanceAt: holding on the
+            // same word counts as silence for scroll-freeze purposes.
             lastConfidentMatchAt = Date()
         }
     }

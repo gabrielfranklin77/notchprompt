@@ -150,6 +150,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
             .store(in: &cancellables)
 
+        speechManager.$isSpeaking
+            .receive(on: RunLoop.main)
+            .sink { [weak self] speaking in self?.model.isSpeechSpeaking = speaking }
+            .store(in: &cancellables)
+
         // React to toggles and locale changes.
         model.$autoSyncEnabled
             .removeDuplicates()

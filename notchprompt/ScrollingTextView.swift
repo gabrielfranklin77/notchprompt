@@ -62,6 +62,9 @@ struct ScrollingTextView: View {
     let pauseOnPunctuation: Bool
     let punctuationStops: [PrompterModel.PunctuationStop]
     let totalCharCount: Int
+    let autoSyncEnabled: Bool
+    let currentSpeechWordIndex: Int
+    let totalScriptTokens: Int
 
     private static let loopGap: CGFloat = 24
     private static let activeTickInterval: TimeInterval = 1.0 / 60.0
@@ -417,7 +420,20 @@ struct ScrollingTextView: View {
             }
 
             let previousPhase = phase
-            phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
+            if autoSyncEnabled, totalScriptTokens > 0, hasMeasuredContentHeight {
+                // Speech-driven mode: phase tracks word index instead of being
+                // integrated from speedPointsPerSecond. Smoothly interpolate
+                // toward the target so it never jumps abruptly.
+                let ratio = CGFloat(currentSpeechWordIndex) / CGFloat(max(totalScriptTokens - 1, 1))
+                // Anchor the matched word ~30% from the top of the viewport so
+                // the reader sees a couple words of upcoming context.
+                let readingAnchor = viewportHeight * 0.30
+                let target = max(topOfScriptPhaseFloor, (ratio * contentHeight) - readingAnchor)
+                let easing = min(1.0, 4.5 * step)
+                phase += (target - phase) * CGFloat(easing)
+            } else {
+                phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
+            }
 
             // Pause-on-punctuation: detect a stop boundary that the reading line just crossed.
             // We only fire once per stop (tracked via lastConsumedPunctuationOffset) and only

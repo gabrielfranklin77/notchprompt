@@ -22,6 +22,7 @@ struct ContentView: View {
                 playbackSection
                 appearanceSection
                 readingSection
+                speechSyncSection
                 displaySection
                 privacySection
                 shortcutsSection
@@ -148,6 +149,45 @@ struct ContentView: View {
         }
     }
 
+    private var speechSyncSection: some View {
+        SettingsSection(title: "Speech Auto-Sync (beta)") {
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle("Scroll while I speak", isOn: $model.autoSyncEnabled)
+                Text("Uses on-device speech recognition to follow you. Audio never leaves your Mac.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Language")
+                        .frame(width: rowLabelWidth, alignment: .leading)
+                    Picker("", selection: $model.speechLocaleIdentifier) {
+                        Text("Português (Brasil)").tag("pt-BR")
+                        Text("English (United States)").tag("en-US")
+                        Text("English (United Kingdom)").tag("en-GB")
+                        Text("Español (España)").tag("es-ES")
+                        Text("Français (France)").tag("fr-FR")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    Spacer(minLength: 0)
+                }
+
+                if model.autoSyncEnabled {
+                    HStack(spacing: 8) {
+                        Image(systemName: model.isSpeechLostPlace ? "exclamationmark.triangle.fill" : "waveform")
+                            .foregroundStyle(model.isSpeechLostPlace ? .red : .green)
+                        Text(model.isSpeechLostPlace
+                             ? "Lost your place — keep speaking, the matcher is waiting"
+                             : "Matching · confidence \(Int(model.currentSpeechConfidence * 100))%")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+    }
+
     private var displaySection: some View {
         SettingsSection(title: "Display") {
             HStack {
@@ -188,6 +228,7 @@ struct ContentView: View {
                 shortcutRow("Option+Command+O", "Toggle overlay visibility")
                 shortcutRow("Option+Command+=", "Increase speed")
                 shortcutRow("Option+Command+-", "Decrease speed")
+                shortcutRow("Option+Command+L", "Open Script Library")
             }
         }
     }

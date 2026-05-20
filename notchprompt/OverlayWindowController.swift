@@ -77,7 +77,7 @@ final class OverlayWindowController {
         panel.isReleasedWhenClosed = false
         // Use .screenSaver level to ensure it sits above the menu bar and covers the notch area.
         panel.level = .screenSaver
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        panel.collectionBehavior = Self.collectionBehavior(privacy: model.privacyModeEnabled)
         panel.hidesOnDeactivate = false
         // panel.isFloatingPanel = true // This overrides level to .floating (3)
         panel.isOpaque = false
@@ -88,6 +88,8 @@ final class OverlayWindowController {
         panel.titlebarAppearsTransparent = true
         panel.ignoresMouseEvents = false
         panel.becomesKeyOnlyIfNeeded = false
+        // Excluded from `Window` menu and `Cmd+~` cycling, redundant with .ignoresCycle but explicit.
+        panel.isExcludedFromWindowsMenu = true
         panel.sharingType = model.privacyModeEnabled ? .none : .readOnly
 
         panel.contentView = hosting
@@ -109,6 +111,9 @@ final class OverlayWindowController {
             reposition()
             panel.level = .screenSaver
             panel.alphaValue = 1.0
+            // Re-apply sharingType on show — some flows reset it when the window is ordered out.
+            panel.sharingType = model.privacyModeEnabled ? .none : .readOnly
+            panel.collectionBehavior = Self.collectionBehavior(privacy: model.privacyModeEnabled)
             panel.orderFrontRegardless()
             panel.makeKeyAndOrderFront(nil)
         } else {
@@ -155,10 +160,13 @@ final class OverlayWindowController {
 
         panel.setFrame(targetFrame, display: true, animate: shouldAnimate)
         lastFrame = targetFrame
-        
-        // Ensure level is re-applied in case something reset it
+
+        // Ensure level, sharingType, and collectionBehavior are re-applied in case something reset them.
+        // Notably AppKit can drop sharingType when the window changes screen or is reordered.
         panel.level = .screenSaver
         panel.alphaValue = 1.0
+        panel.sharingType = model.privacyModeEnabled ? .none : .readOnly
+        panel.collectionBehavior = Self.collectionBehavior(privacy: model.privacyModeEnabled)
 
 #if DEBUG
         debugDump(
@@ -171,6 +179,7 @@ final class OverlayWindowController {
 
     func setPrivacyMode(_ enabled: Bool) {
         panel.sharingType = enabled ? .none : .readOnly
+        panel.collectionBehavior = Self.collectionBehavior(privacy: enabled)
 #if DEBUG
         debugDump(
             reason: "setPrivacyMode enabled=\(enabled) sharingType=\(panel.sharingType.rawValue)",
@@ -178,6 +187,23 @@ final class OverlayWindowController {
             calc: nil
         )
 #endif
+    }
+
+    /// Centralizes the collectionBehavior so privacy mode adds `.transient`,
+    /// which keeps the panel out of Mission Control / window snapshots that
+    /// some capture tools sample. Best-effort: macOS 15+ ScreenCaptureKit
+    /// ignores `sharingType = .none` regardless (see docs/screen-share-test-matrix.md).
+    private static func collectionBehavior(privacy: Bool) -> NSWindow.CollectionBehavior {
+        var behavior: NSWindow.CollectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle,
+        ]
+        if privacy {
+            behavior.insert(.transient)
+        }
+        return behavior
     }
 
     private func targetScreen() -> NSScreen? {

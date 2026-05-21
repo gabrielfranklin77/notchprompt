@@ -87,7 +87,7 @@ enum SpeechSyncMatcher {
         scriptTokens: [ScriptToken],
         transcriptTail: [String],
         cursor: Int,
-        lookahead: Int = 16
+        lookahead: Int = 8
     ) -> MatchResult? {
         guard !scriptTokens.isEmpty, !transcriptTail.isEmpty else { return nil }
         let startIndex = max(0, min(cursor, scriptTokens.count - 1))

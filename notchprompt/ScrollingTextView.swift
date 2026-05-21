@@ -433,13 +433,16 @@ struct ScrollingTextView: View {
                 // behavior that felt like a 1s ghost roll.
                 if isSpeechSpeaking {
                     let ratio = CGFloat(currentSpeechWordIndex) / CGFloat(max(totalScriptTokens - 1, 1))
-                    // Anchor the matched word ~30% from the top of the viewport so
-                    // the reader sees a couple words of upcoming context.
-                    let readingAnchor = viewportHeight * 0.30
+                    // Anchor the matched word ~55% from the top of the viewport
+                    // (slightly past center). Above: a couple words of context
+                    // already read; below: a small amount of look-ahead. This
+                    // killed the "jumping ahead between sentences" feeling.
+                    let readingAnchor = viewportHeight * 0.55
                     let target = max(topOfScriptPhaseFloor, (ratio * contentHeight) - readingAnchor)
-                    // Faster easing (9.0/step → ~300ms to settle) so the scroll
-                    // feels like it's tracking the speaker rather than catching up.
-                    let easing = min(1.0, 9.0 * step)
+                    // Gentler easing (5.5/step → ~550ms to settle) for a smooth
+                    // "follow" rather than a snap. Combined with freeze-on-silence,
+                    // pauses still register immediately.
+                    let easing = min(1.0, 5.5 * step)
                     phase += (target - phase) * CGFloat(easing)
                 }
                 // else: silence → phase stays put.

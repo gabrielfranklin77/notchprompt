@@ -155,6 +155,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             .sink { [weak self] speaking in self?.model.isSpeechSpeaking = speaking }
             .store(in: &cancellables)
 
+        // When the user scrolls manually during auto-sync, PrompterModel sets
+        // a pending token index. Hand it off to SpeechSyncManager so the
+        // matcher resumes from the new position (otherwise the scroll snaps
+        // back to where the cursor was).
+        model.$pendingSpeechSeekTokenIndex
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] tokenIndex in
+                guard let self else { return }
+                self.speechManager.seek(toWordIndex: tokenIndex)
+                self.model.consumePendingSpeechSeek()
+            }
+            .store(in: &cancellables)
+
         // React to toggles and locale changes.
         model.$autoSyncEnabled
             .removeDuplicates()

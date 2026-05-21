@@ -159,6 +159,9 @@ struct OverlayView: View {
                         isSpeechSpeaking: model.isSpeechSpeaking,
                         onSaveLiveCharOffset: { offset in
                             model.editEnterCharOffset = offset
+                        },
+                        onUserSeekedToCharOffset: { offset in
+                            model.userSeekedToCharOffset(offset)
                         }
                     )
                     .overlay {

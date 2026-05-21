@@ -128,6 +128,12 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     /// being read, not at the start of the script.
     @Published var editEnterCharOffset: Int = 0
 
+    /// Token index that AppDelegate should hand to SpeechSyncManager when the
+    /// user scrolls manually during auto-sync, so the matcher resumes from
+    /// the new position instead of dragging the scroll back to where it was.
+    /// `nil` between requests (consumed after dispatch).
+    @Published private(set) var pendingSpeechSeekTokenIndex: Int? = nil
+
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()
     @Published private(set) var jumpBackToken: UUID = UUID()
@@ -219,6 +225,30 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
 
         manualScrollEnabled = false
         start()
+    }
+
+    /// Called by ScrollingTextView right after `applyManualScrollDelta` so the
+    /// model can keep the inline-edit position fresh *and* — if speech sync
+    /// is active — translate the new char offset into a token index for the
+    /// SpeechSyncManager to seek to. Without this, manual scroll during
+    /// auto-sync gets immediately undone because the matcher's cursor is
+    /// still on the old position.
+    func userSeekedToCharOffset(_ charOffset: Int) {
+        editEnterCharOffset = charOffset
+
+        guard autoSyncEnabled, !scriptTokensForSpeech.isEmpty, totalCharCount > 0 else {
+            return
+        }
+        let clamped = max(0, min(charOffset, totalCharCount - 1))
+        let ratio = Double(clamped) / Double(max(1, totalCharCount - 1))
+        let tokenIndex = Int((ratio * Double(scriptTokensForSpeech.count - 1)).rounded())
+        pendingSpeechSeekTokenIndex = max(0, min(tokenIndex, scriptTokensForSpeech.count - 1))
+    }
+
+    /// AppDelegate calls this after dispatching the seek to SpeechSyncManager
+    /// so the next manual scroll triggers a fresh observer fire.
+    func consumePendingSpeechSeek() {
+        pendingSpeechSeekTokenIndex = nil
     }
 
     func handleManualScroll(deltaPoints: CGFloat) {

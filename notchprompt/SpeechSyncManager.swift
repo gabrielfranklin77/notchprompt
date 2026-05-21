@@ -176,6 +176,21 @@ final class SpeechSyncManager: ObservableObject {
         }
     }
 
+    /// Move the matcher's cursor to a specific token index — used when the
+    /// user scrolls manually during auto-sync. Without seeking, the matcher
+    /// stays anchored on the old position and tugs the scroll back. We do
+    /// NOT touch `lastTranscriptAdvanceAt`: if the user wasn't speaking,
+    /// `isSpeaking` stays false (freeze-on-silence preserved); if they
+    /// were, the matcher resumes from the new position on the next partial.
+    func seek(toWordIndex index: Int) {
+        guard !scriptTokens.isEmpty else { return }
+        let safe = max(0, min(index, scriptTokens.count - 1))
+        currentWordIndex = safe
+        lastConfidentMatchAt = Date()
+        matchConfidence = 0
+        print("[SpeechSync] seek to wordIndex=\(safe) (manual scroll resync)")
+    }
+
     func stop() {
         sessionRefreshTimer?.invalidate()
         sessionRefreshTimer = nil

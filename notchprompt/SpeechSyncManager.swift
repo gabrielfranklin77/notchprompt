@@ -77,12 +77,15 @@ final class SpeechSyncManager: ObservableObject {
     /// Returns `true` if both Speech and Microphone permissions are granted.
     func requestPermissions() async -> Bool {
         state = .requestingPermission
+        print("[SpeechSync] requestPermissions: asking SFSpeechRecognizer.requestAuthorization…")
 
         let speechStatus = await withCheckedContinuation { (continuation: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
             }
         }
+
+        print("[SpeechSync] requestPermissions: speech status = \(speechStatus.rawValue) (\(speechReason(for: speechStatus)))")
 
         guard speechStatus == .authorized else {
             state = .denied(reason: speechReason(for: speechStatus))
@@ -94,6 +97,8 @@ final class SpeechSyncManager: ObservableObject {
                 continuation.resume(returning: granted)
             }
         }
+
+        print("[SpeechSync] requestPermissions: mic granted = \(micGranted)")
 
         guard micGranted else {
             state = .denied(reason: "Microphone access not granted")
@@ -119,23 +124,38 @@ final class SpeechSyncManager: ObservableObject {
     /// Starts the speech recognition loop. Caller should `await requestPermissions()`
     /// first; calling start without permissions transitions to `.denied`.
     func start(scriptTokens tokens: [SpeechSyncMatcher.ScriptToken], startIndex: Int = 0) async {
+        print("[SpeechSync] start: tokens=\(tokens.count) locale=\(locale.identifier)")
         guard !tokens.isEmpty else {
             state = .unavailable(reason: "Empty script")
+            print("[SpeechSync] start: ABORT — empty script")
             return
         }
 
         // Re-check permissions and availability.
-        if SFSpeechRecognizer.authorizationStatus() != .authorized {
+        let initialAuth = SFSpeechRecognizer.authorizationStatus()
+        print("[SpeechSync] start: initial speech auth = \(initialAuth.rawValue)")
+        if initialAuth != .authorized {
             let ok = await requestPermissions()
-            guard ok else { return }
+            guard ok else {
+                print("[SpeechSync] start: ABORT — permissions denied")
+                return
+            }
         }
 
-        guard let recognizer, recognizer.isAvailable else {
+        guard let recognizer else {
             state = .unavailable(reason: "Speech recognizer not available for \(locale.identifier)")
+            print("[SpeechSync] start: ABORT — no recognizer for locale \(locale.identifier)")
+            return
+        }
+        print("[SpeechSync] start: recognizer.isAvailable=\(recognizer.isAvailable) supportsOnDevice=\(recognizer.supportsOnDeviceRecognition)")
+        guard recognizer.isAvailable else {
+            state = .unavailable(reason: "Speech recognizer not available for \(locale.identifier)")
+            print("[SpeechSync] start: ABORT — recognizer not available")
             return
         }
         guard recognizer.supportsOnDeviceRecognition else {
             state = .unavailable(reason: "On-device recognition unsupported for \(locale.identifier). Try a different locale.")
+            print("[SpeechSync] start: ABORT — on-device recognition unsupported")
             return
         }
 
@@ -149,8 +169,10 @@ final class SpeechSyncManager: ObservableObject {
             state = .active
             scheduleSessionRefresh()
             scheduleLostPlaceCheck()
+            print("[SpeechSync] start: OK — session active, tap installed")
         } catch {
             state = .unavailable(reason: "Audio engine failed: \(error.localizedDescription)")
+            print("[SpeechSync] start: ABORT — audio engine threw: \(error)")
         }
     }
 
@@ -210,9 +232,16 @@ final class SpeechSyncManager: ObservableObject {
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
             if let result {
-                Task { @MainActor in
-                    self.handlePartial(transcript: result.bestTranscription.formattedString)
+                let transcript = result.bestTranscription.formattedString
+                if !transcript.isEmpty {
+                    print("[SpeechSync] partial: \"\(transcript.suffix(80))\"")
                 }
+                Task { @MainActor in
+                    self.handlePartial(transcript: transcript)
+                }
+            }
+            if let error {
+                print("[SpeechSync] recognitionTask error: \(error)")
             }
             if error != nil || (result?.isFinal ?? false) {
                 Task { @MainActor in

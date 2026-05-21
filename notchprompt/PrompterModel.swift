@@ -122,6 +122,11 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
             manualScrollEnabled = false
         }
     }
+    /// Character offset within `script` that the inline editor should jump to
+    /// when entering edit mode. Updated continuously by ScrollingTextView so
+    /// double-clicking the overlay opens the editor at the word currently
+    /// being read, not at the start of the script.
+    @Published var editEnterCharOffset: Int = 0
 
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()

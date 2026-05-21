@@ -118,9 +118,12 @@ struct OverlayView: View {
             // subtle blur bands at the top/bottom to soften the exit.
             Group {
                 if model.isEditingScript {
-                    InlineScriptEditor(text: $model.script, fontSize: CGFloat(model.fontSize)) {
-                        model.isEditingScript = false
-                    }
+                    InlineScriptEditor(
+                        text: $model.script,
+                        fontSize: CGFloat(model.fontSize),
+                        initialCharOffset: model.editEnterCharOffset,
+                        onCommit: { model.isEditingScript = false }
+                    )
                 } else {
                     ScrollingTextView(
                         text: model.script,
@@ -153,12 +156,22 @@ struct OverlayView: View {
                         autoSyncEnabled: model.autoSyncEnabled,
                         currentSpeechWordIndex: model.currentSpeechWordIndex,
                         totalScriptTokens: model.scriptTokensForSpeech.count,
-                        isSpeechSpeaking: model.isSpeechSpeaking
+                        isSpeechSpeaking: model.isSpeechSpeaking,
+                        onSaveLiveCharOffset: { offset in
+                            model.editEnterCharOffset = offset
+                        }
                     )
                     .overlay {
                         TrackpadScrollCaptureView { delta in
                             model.handleManualScroll(deltaPoints: delta)
                         }
+                    }
+                    // Double-click anywhere on the scrolling text area enters
+                    // inline-edit mode at the word currently being read. The
+                    // most recent char offset is tracked by ScrollingTextView
+                    // via `onSaveLiveCharOffset` and lives in `model.editEnterCharOffset`.
+                    .onTapGesture(count: 2) {
+                        model.isEditingScript = true
                     }
                 }
             }
@@ -319,29 +332,93 @@ struct OverlayView: View {
     }
 }
 
-/// Inline editor that swaps in for `ScrollingTextView` when the user clicks the
-/// pencil button. Bound directly to `PrompterModel.script` so edits autosave
-/// through the existing UserDefaults debouncer. Escape commits and exits.
-private struct InlineScriptEditor: View {
+/// Inline editor that swaps in for `ScrollingTextView` when the user enters
+/// edit mode (pencil button OR double-click). Wraps an `NSTextView` so we can
+/// programmatically position the caret at the word currently being read
+/// (`initialCharOffset`) and scroll that line into view — which the SwiftUI
+/// `TextEditor` cannot do reliably. Escape commits and exits via `onCommit`.
+private struct InlineScriptEditor: NSViewRepresentable {
     @Binding var text: String
     let fontSize: CGFloat
+    let initialCharOffset: Int
     let onCommit: () -> Void
 
-    @FocusState private var isFocused: Bool
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+        textView.delegate = context.coordinator
+        textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        textView.textColor = .white
+        textView.insertionPointColor = .white
+        textView.backgroundColor = NSColor.black.withAlphaComponent(0.35)
+        textView.drawsBackground = true
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.usesFindBar = false
+        textView.string = text
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
 
-    var body: some View {
-        TextEditor(text: $text)
-            .font(.system(size: fontSize, weight: .regular, design: .monospaced))
-            .foregroundStyle(.white)
-            .scrollContentBackground(.hidden)
-            .background(Color.black.opacity(0.35))
-            .cornerRadius(8)
-            .focused($isFocused)
-            .onAppear { isFocused = true }
-            .onKeyPress(.escape) {
-                onCommit()
-                return .handled
+        // Place the caret + scroll on the next runloop pass so the view has
+        // measured its layout and `scrollRangeToVisible` lands on the right line.
+        DispatchQueue.main.async {
+            let safe = min(text.count, max(0, initialCharOffset))
+            let range = NSRange(location: safe, length: 0)
+            textView.setSelectedRange(range)
+            textView.scrollRangeToVisible(range)
+            textView.window?.makeFirstResponder(textView)
+        }
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        // Sync external text changes back into the view without nuking the user's
+        // selection. We only reassign when the external value diverged (rare —
+        // the model is the source of truth and the view writes back in textDidChange).
+        if textView.string != text {
+            let selection = textView.selectedRange()
+            textView.string = text
+            let safe = NSRange(
+                location: min(selection.location, text.count),
+                length: 0
+            )
+            textView.setSelectedRange(safe)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: InlineScriptEditor
+
+        init(parent: InlineScriptEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            parent.text = tv.string
+        }
+
+        /// Treat Esc as "commit and exit" — same behavior as the old SwiftUI
+        /// implementation that used `.onKeyPress(.escape)`.
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                parent.onCommit()
+                return true
             }
+            return false
+        }
     }
 }
 

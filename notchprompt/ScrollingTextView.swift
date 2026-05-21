@@ -68,6 +68,10 @@ struct ScrollingTextView: View {
     /// When false in auto-sync mode, freezes `phase` in place — eliminates the
     /// 1s "ghost roll" the user reported when pausing mid-sentence.
     let isSpeechSpeaking: Bool
+    /// Called every ~300ms with the character offset of the word currently
+    /// at the reading line, so the inline editor can open at that position
+    /// instead of at the start of the script.
+    let onSaveLiveCharOffset: ((Int) -> Void)?
 
     private static let loopGap: CGFloat = 24
     private static let activeTickInterval: TimeInterval = 1.0 / 60.0
@@ -84,6 +88,9 @@ struct ScrollingTextView: View {
     @State private var deferredStopTargetPhase: CGFloat? = nil
     @State private var lastConsumedPunctuationOffset: Int = -1
     @State private var punctuationPauseUntil: Date? = nil
+    /// Counts ticks between live char-offset saves; reused to throttle
+    /// callbacks to ~3 Hz instead of 60 Hz.
+    @State private var liveSaveCounter: Int = 0
 
     // Smooth deceleration/acceleration rate (0-1, higher = faster)
     private let speedLerpFactor: Double = 8.0
@@ -501,6 +508,15 @@ struct ScrollingTextView: View {
 
         if scrollMode == .infinite, phase >= cycleLength * 8 {
             phase = phase.truncatingRemainder(dividingBy: cycleLength)
+        }
+
+        // Publish current char offset every ~20 ticks (~0.33s @ 60fps) so the
+        // inline editor (opened via double-click on the overlay) can position
+        // the caret on the word currently at the reading line.
+        liveSaveCounter += 1
+        if liveSaveCounter >= 20 {
+            liveSaveCounter = 0
+            onSaveLiveCharOffset?(currentCharOffset(forPhase: phase))
         }
     }
 }

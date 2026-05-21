@@ -72,6 +72,10 @@ struct ScrollingTextView: View {
     /// at the reading line, so the inline editor can open at that position
     /// instead of at the start of the script.
     let onSaveLiveCharOffset: ((Int) -> Void)?
+    /// Called the instant a manual-scroll delta lands. Receives the new char
+    /// offset so the model can sync the speech-sync cursor (otherwise the
+    /// matcher snaps the scroll back to where it was).
+    let onUserSeekedToCharOffset: ((Int) -> Void)?
 
     private static let loopGap: CGFloat = 24
     private static let activeTickInterval: TimeInterval = 1.0 / 60.0
@@ -364,6 +368,7 @@ struct ScrollingTextView: View {
 
         if scrollMode == .stopAtEnd, hasMeasuredContentHeight {
             phase = min(max(phase, topOfScriptPhaseFloor), endPhase)
+            onUserSeekedToCharOffset?(currentCharOffset(forPhase: phase))
             return
         }
 
@@ -371,6 +376,9 @@ struct ScrollingTextView: View {
             phase = phase.truncatingRemainder(dividingBy: cycleLength)
         }
         phase = max(phase, topOfScriptPhaseFloor)
+        // Publish the new offset immediately so PrompterModel can move the
+        // speech cursor in lockstep with the user's manual scroll.
+        onUserSeekedToCharOffset?(currentCharOffset(forPhase: phase))
     }
 
     /// Linear estimate of which character offset is "at the reading line"
